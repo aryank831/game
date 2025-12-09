@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Flying Game with Losing Sound</title>
+  <style>
+    body {
+      margin: 0;
+      background: #222;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      font-family: Arial, sans-serif;
+      color: #fff;
+      overflow: hidden;
+    }
+    #gameContainer { 
+      position: relative; 
+      box-shadow: 0 0 20px rgba(0,0,0,0.5);
+    }
+    canvas {
+      background: linear-gradient(#87ceeb, #4ec0ca);
+      border: 3px solid #fff;
+      border-radius: 12px;
+      display: block;
+    }
+    #score {
+      position: absolute;
+      top: 20px;
+      width: 100%;
+      text-align: center;
+      font-size: 40px;
+      font-weight: bold;
+      text-shadow: 2px 2px 4px #000;
+      pointer-events: none;
+      z-index: 10;
+    }
+    #message {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      font-size: 24px;
+      text-align: center;
+      text-shadow: 2px 2px 4px #000;
+      background-color: rgba(0,0,0,0.5);
+      padding: 20px;
+      border-radius: 10px;
+      pointer-events: none;
+    }
+  </style>
+</head>
+<body>
+
+  <div id="gameContainer">
+    <canvas id="gameCanvas" width="400" height="600"></canvas>
+    <div id="score">0</div>
+    <div id="message">Press SPACE or CLICK to Start</div>
+  </div>
+
+<script>
+const canvas = document.getElementById("gameCanvas");
+const ctx = canvas.getContext("2d");
+const scoreEl = document.getElementById("score");
+const messageEl = document.getElementById("message");
+
+// === 1. IMAGES ===
+const playerImage = new Image();
+playerImage.src = "image.png";
+let playerLoaded = false;
+playerImage.onload = () => { playerLoaded = true; };
+
+// === 2. AUDIO (Using Internet Links) ===
+
+// Background Music
+const bgMusic = new Audio('mo.mp3'); 
+bgMusic.loop = true; 
+bgMusic.volume = 0.4;
+
+// Jump Sound
+const jumpSound = new Audio('jump.mp3');
+jumpSound.volume = 0.0;
+
+// --- NEW: Losing Sound ---
+const overSound = new Audio('ending.mp3');
+overSound.volume = 0.5;
+
+// Game Variables
+const player = { 
+    x: 50, 
+    y: 300, 
+    width: 50, 
+    height: 40, 
+    vel: 0, 
+    gravity: 0.5, 
+    jump: -8 
+};
+
+let pipes = [];
+let frame = 0;
+let score = 0;
+let started = false;
+let over = false;
+
+function reset() {
+  player.y = 300;
+  player.vel = 0;
+  pipes = [];
+  frame = 0;
+  score = 0;
+  over = false;
+  scoreEl.textContent = "0";
+  messageEl.textContent = "Press SPACE or CLICK to Start";
+  messageEl.style.display = "block";
+  
+  // Stop sounds on reset
+  bgMusic.pause();
+  bgMusic.currentTime = 0;
+  overSound.pause();
+  overSound.currentTime = 0;
+}
+
+function createPipe() {
+  const gap = 160;
+  const minTop = 50;
+  const maxTop = canvas.height - minTop - gap;
+  const topHeight = Math.floor(Math.random() * (maxTop - minTop + 1) + minTop);
+  
+  pipes.push({ 
+      x: canvas.width, 
+      top: topHeight, 
+      bottom: topHeight + gap, 
+      width: 60,
+      counted: false 
+  });
+}
+
+function update() {
+  if (!started || over) return;
+
+  frame++;
+  player.vel += player.gravity;
+  player.y += player.vel;
+
+  if (frame % 100 === 0) createPipe();
+
+  pipes.forEach(p => p.x -= 3);
+  pipes = pipes.filter(p => p.x + p.width > 0);
+
+  pipes.forEach(p => {
+    // Collision
+    if (player.x < p.x + p.width && player.x + player.width > p.x) {
+        if (player.y < p.top || player.y + player.height > p.bottom) {
+            gameOver();
+        }
+    }
+    // Scoring
+    if (!p.counted && p.x + p.width < player.x) {
+      score++;
+      p.counted = true;
+      scoreEl.textContent = score;
+    }
+  });
+
+  if (player.y + player.height >= canvas.height || player.y < 0) {
+    gameOver();
+  }
+}
+
+function gameOver() {
+    if(over) return; // Prevent playing sound multiple times if hitting multiple things
+    over = true;
+    messageEl.innerHTML = "Game Over!<br>Score: " + score + "<br><small>Click to Restart</small>";
+    messageEl.style.display = "block";
+    
+    // Stop Background Music
+    bgMusic.pause();
+    bgMusic.currentTime = 0;
+    
+    // Play Losing Sound
+    overSound.currentTime = 0;
+    overSound.play();
+}
+
+function draw() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  // Pipes
+  ctx.fillStyle = "#2ecc71";
+  ctx.strokeStyle = "#27ae60";
+  ctx.lineWidth = 2;
+  pipes.forEach(p => {
+    ctx.fillRect(p.x, 0, p.width, p.top);
+    ctx.strokeRect(p.x, 0, p.width, p.top);
+    ctx.fillRect(p.x, p.bottom, p.width, canvas.height - p.bottom);
+    ctx.strokeRect(p.x, p.bottom, p.width, canvas.height - p.bottom);
+  });
+
+  // Player
+  if (playerLoaded) {
+    ctx.drawImage(playerImage, player.x, player.y, player.width, player.height);
+  } else {
+    ctx.fillStyle = "orange";
+    ctx.fillRect(player.x, player.y, player.width, player.height);
+  }
+}
+
+function loop() {
+  update();
+  draw();
+  requestAnimationFrame(loop);
+}
+
+function jump() {
+  if (!started) {
+    started = true;
+    messageEl.style.display = "none";
+    bgMusic.play().catch(e => console.log("Music waiting for interaction"));
+  }
+  if (over) {
+    reset();
+    started = true;
+    messageEl.style.display = "none";
+    bgMusic.play();
+  }
+  
+  if (!over) {
+      player.vel = player.jump;
+      jumpSound.currentTime = 0;
+      jumpSound.play();
+  }
+}
+
+// Controls
+document.addEventListener("keydown", e => {
+  if (e.code === "Space") jump();
+});
+canvas.addEventListener("mousedown", jump);
+canvas.addEventListener("touchstart", e => { e.preventDefault(); jump(); });
+
+reset();
+loop();
+</script>
+</body>
+</html>
